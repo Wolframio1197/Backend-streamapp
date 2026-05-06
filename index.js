@@ -25,22 +25,29 @@ const Song = mongoose.model('Song', new mongoose.Schema({
 // 3. Configurar Multer (Para recibir el archivo temporalmente)
 const upload = multer({ dest: 'uploads/' }); // Guarda el archivo temporalmente en una carpeta
 
-// 4. Configuración de Azure Blob Storage
-const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
-const containerName = 'canciones';
-const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME;
-const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY;
-const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+// 4. Configuración de Azure Blob Storage (Protegida)
+let blobServiceClient, sharedKeyCredential;
 
-// Función para generar URL SAS (la misma de antes)
+try {
+  blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
+  sharedKeyCredential = new StorageSharedKeyCredential(
+    process.env.AZURE_STORAGE_ACCOUNT_NAME, 
+    process.env.AZURE_STORAGE_ACCOUNT_KEY
+  );
+} catch (error) {
+  console.error("ERROR CRÍTICO: Faltan las variables de entorno del Blob Storage en Azure App Service", error.message);
+}
+
+// Función para generar URL SAS
 function getSasUrl(blobName) {
+  if (!sharedKeyCredential) return null; // Si no hay credenciales, devuelve nulo
   const sasToken = generateBlobSASQueryParameters({
     containerName, blobName,
     permissions: BlobSASPermissions.parse("r"),
     startsOn: new Date(),
     expiresOn: new Date(new Date().valueOf() + 3600 * 1000),
   }, sharedKeyCredential).toString();
-  return `https://${accountName}.blob.core.windows.net/${containerName}/${blobName}?${sasToken}`;
+  return `https://${process.env.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${containerName}/${blobName}?${sasToken}`;
 }
 
 // ==========================================
