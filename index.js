@@ -115,6 +115,37 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
     res.status(500).send("Error al subir la canción");
   }
 });
+// Ruta NUEVA: Borrar una canción
+app.delete('/api/songs/:id', async (req, res) => {
+  try {
+    // 1. Buscar la canción en la base de datos para saber su nombre de archivo
+    const song = await Song.findById(req.params.id);
+    if (!song) return res.status(404).send("Canción no encontrada en la BD");
 
+    // 2. Borrar el archivo físico de Azure Blob Storage
+    try {
+      const blockBlobClient = blobServiceClient.getContainerClient(containerName).getBlockBlobClient(song.fileName);
+      await blockBlobClient.delete(); // Lo elimina del contenedor 'canciones'
+    } catch (blobError) {
+      console.error("El archivo no existía en Blob Storage, pero continuamos:", blobError.message);
+    }
+
+    // 3. Borrar el registro de la base de datos
+    await Song.findByIdAndDelete(req.params.id);
+
+    // 4. Devolver la lista actualizada para que el Frontend se refresque sin recargar
+    const songs = await Song.find().sort({ _id: -1 }); 
+    const songsWithUrls = songs.map(s => ({
+      id: s._id,
+      name: s.originalName,
+      url: getSasUrl(s.fileName)
+    }));
+
+    res.json(songsWithUrls);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al borrar la canción");
+  }
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend corriendo en puerto ${PORT}`));
