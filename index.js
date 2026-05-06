@@ -4,6 +4,7 @@ const cors = require('cors');
 const { BlobServiceClient, generateBlobSASQueryParameters, BlobSASPermissions, StorageSharedKeyCredential } = require('@azure/storage-blob');
 const multer = require('multer'); // Nuevo: para subir archivos
 const path = require('path');
+const os = require('os'); 
 require('dotenv').config();
 
 const app = express();
@@ -23,7 +24,8 @@ const Song = mongoose.model('Song', new mongoose.Schema({
 }));
 
 // 3. Configurar Multer (Para recibir el archivo temporalmente)
-const upload = multer({ dest: 'uploads/' }); 
+// Usamos os.tmpdir() para usar la carpeta temporal de Azure, donde SÍ tenemos permisos
+const upload = multer({ dest: os.tmpdir() }); 
 
 
 const containerName = 'canciones';
