@@ -66,7 +66,8 @@ app.get('/api/song/:songName', async (req, res) => {
 
 // Ruta NUEVA: Obtener TODAS las canciones de la BD
 app.get('/api/songs', async (req, res) => {
-  const songs = await Song.find().sort({ _ts: -1 });  // Ordenadas por las más nuevas
+    // Cambiar a _id: -1
+  const songs = await Song.find().sort({ _id: -1 });   // Ordenadas por las más nuevas
   // A cada canción le generamos su URL segura para escucharla
   const songsWithUrls = songs.map(song => ({
     id: song._id,
@@ -101,7 +102,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
     fs.unlinkSync(file.path);
 
     // 4. Devolver la lista actualizada
-    const songs = await Song.find().sort({ _ts: -1 }); 
+    const songs = await Song.find().sort({ _id: -1 });  
     const songsWithUrls = songs.map(song => ({
       id: song._id,
       name: song.originalName,
