@@ -115,6 +115,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
     res.status(500).send("Error al subir la canción");
   }
 });
+
 // Ruta NUEVA: Borrar una canción
 app.delete('/api/songs/:id', async (req, res) => {
   try {
@@ -147,5 +148,6 @@ app.delete('/api/songs/:id', async (req, res) => {
     res.status(500).send("Error al borrar la canción");
   }
 });
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend corriendo en puerto ${PORT}`));
