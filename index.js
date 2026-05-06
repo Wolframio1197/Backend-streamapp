@@ -23,6 +23,14 @@ const Song = mongoose.model('Song', new mongoose.Schema({
   uploadedAt: { type: Date, default: Date.now }
 }));
 
+// Modelo de Lista de Reproducción
+const Playlist = mongoose.model('Playlist', new mongoose.Schema({
+  name: String,
+  ownerEmail: String,
+  // Guardamos un resumen de la canción para evitar usar populate()
+  songs: [{ songId: String, originalName: String, fileName: String }] 
+}));
+
 // 3. Configurar Multer (Para recibir el archivo temporalmente)
 // Usamos os.tmpdir() para usar la carpeta temporal de Azure, donde SÍ tenemos permisos
 const upload = multer({ dest: os.tmpdir() }); 
@@ -147,6 +155,64 @@ app.delete('/api/songs/:id', async (req, res) => {
     console.error(error);
     res.status(500).send("Error al borrar la canción");
   }
+});
+
+// ==========================================
+// RUTAS DE PLAYLISTS
+// ==========================================
+
+// Obtener todas las playlists (filtradas por el email del usuario)
+app.get('/api/playlists', async (req, res) => {
+  const ownerEmail = req.query.owner;
+  const playlists = await Playlist.find({ ownerEmail }).sort({ _id: -1 });
+  
+  // A cada canción dentro de cada playlist, le generamos su URL segura
+  const playlistsWithUrls = playlists.map(pl => ({
+    id: pl._id,
+    name: pl.name,
+    songs: pl.songs.map(s => ({
+      id: s.songId,
+      name: s.originalName,
+      url: getSasUrl(s.fileName)
+    }))
+  }));
+  res.json(playlistsWithUrls);
+});
+
+// Crear una playlist nueva
+app.post('/api/playlists', async (req, res) => {
+  const { name, ownerEmail } = req.body;
+  if (!name) return res.status(400).send("El nombre es obligatorio");
+  
+  const newPlaylist = new Playlist({ name, ownerEmail, songs: [] });
+  await newPlaylist.save();
+  res.status(201).json({ id: newPlaylist._id, name: newPlaylist.name, songs: [] });
+});
+
+// Añadir una canción a una playlist
+app.post('/api/playlists/:id/song', async (req, res) => {
+  const { songId, originalName, fileName } = req.body;
+  const playlist = await Playlist.findById(req.params.id);
+  if (!playlist) return res.status(404).send("Playlist no encontrada");
+
+  // Evitamos añadir la misma canción dos veces
+  if (playlist.songs.some(s => s.songId === songId)) {
+    return res.json(playlist); // Devolvemos la tal cual
+  }
+
+  playlist.songs.push({ songId, originalName, fileName });
+  await playlist.save();
+  res.json(playlist);
+});
+
+// Quitar una canción de una playlist
+app.delete('/api/playlists/:id/song/:songId', async (req, res) => {
+  const playlist = await Playlist.findById(req.params.id);
+  if (!playlist) return res.status(404).send("Playlist no encontrada");
+
+  playlist.songs = playlist.songs.filter(s => s.songId !== req.params.songId);
+  await playlist.save();
+  res.json(playlist);
 });
 
 const PORT = process.env.PORT || 3000;
