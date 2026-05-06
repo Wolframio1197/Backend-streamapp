@@ -215,5 +215,16 @@ app.delete('/api/playlists/:id/song/:songId', async (req, res) => {
   res.json(playlist);
 });
 
+// Ruta NUEVA: Borrar una playlist entera
+app.delete('/api/playlists/:id', async (req, res) => {
+  try {
+    await Playlist.findByIdAndDelete(req.params.id);
+    res.status(204).send(); // 204 significa "Borrado con éxito sin devolver contenido"
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al borrar la playlist");
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend corriendo en puerto ${PORT}`));
