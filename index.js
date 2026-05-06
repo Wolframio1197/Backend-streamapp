@@ -23,7 +23,10 @@ const Song = mongoose.model('Song', new mongoose.Schema({
 }));
 
 // 3. Configurar Multer (Para recibir el archivo temporalmente)
-const upload = multer({ dest: 'uploads/' }); // Guarda el archivo temporalmente en una carpeta
+const upload = multer({ dest: 'uploads/' }); 
+
+
+const containerName = 'canciones';
 
 // 4. Configuración de Azure Blob Storage (Protegida)
 let blobServiceClient, sharedKeyCredential;
