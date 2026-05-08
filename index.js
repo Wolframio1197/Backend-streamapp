@@ -225,6 +225,57 @@ app.delete('/api/playlists/:id', async (req, res) => {
     res.status(500).send("Error al borrar la playlist");
   }
 });
+const Favorite = mongoose.model('Favorite', new mongoose.Schema({
+  userId: String,       // El ID de Microsoft del usuario
+  songId: String,
+  originalName: String,
+  fileName: String
+}));
+// ==========================================
+// RUTAS DE FAVORITOS
+// ==========================================
+
+// Obtener TODOS los favoritos de un usuario
+app.get('/api/favorites', async (req, res) => {
+  const userId = req.query.userId;
+  if (!userId) return res.status(400).send("Falta el ID de usuario");
+  
+  const favorites = await Favorite.find({ userId }).sort({ _id: -1 });
+  const favoritesWithUrls = favorites.map(f => ({
+    id: f.songId,
+    name: f.originalName,
+    url: getSasUrl(f.fileName)
+  }));
+  res.json(favoritesWithUrls);
+});
+
+// Añadir a favoritos
+app.post('/api/favorites', async (req, res) => {
+  const { userId, songId, originalName, fileName } = req.body;
+  if (!userId || !songId) return res.status(400).send("Faltan datos");
+
+  // Evitar duplicados
+  const exists = await Favorite.findOne({ userId, songId });
+  if (exists) return res.json({ message: "Ya es favorito" });
+
+  const newFav = new Favorite({ userId, songId, originalName, fileName });
+  await newFav.save();
+  res.status(201).json({ message: "Añadido a favoritos" });
+});
+
+// Quitar de favoritos
+app.delete('/api/favorites/:songId', async (req, res) => {
+  const userId = req.query.userId;
+  await Favorite.findOneAndDelete({ userId, songId: req.params.songId });
+  res.status(204).send();
+});
+
+// Comprobar si una canción ES favorita (para pintar el corazón rojo al cargar la página)
+app.get('/api/favorites/check/:songId', async (req, res) => {
+  const userId = req.query.userId;
+  const isFavorite = await Favorite.exists({ userId, songId: req.params.songId });
+  res.json({ isFavorite: !!isFavorite });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend corriendo en puerto ${PORT}`));
