@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { BlobServiceClient, generateBlobSASQueryParameters, BlobSASPermissions, StorageSharedKeyCredential } = require('@azure/storage-blob');
-const multer = require('multer'); // Nuevo: para subir archivos
+const multer = require('multer');
 const path = require('path');
 const os = require('os'); 
 require('dotenv').config();
@@ -27,18 +27,15 @@ const Song = mongoose.model('Song', new mongoose.Schema({
 const Playlist = mongoose.model('Playlist', new mongoose.Schema({
   name: String,
   ownerEmail: String,
-  // Guardamos un resumen de la canción para evitar usar populate()
   songs: [{ songId: String, originalName: String, fileName: String }] 
 }));
 
-// 3. Configurar Multer (Para recibir el archivo temporalmente)
-// Usamos os.tmpdir() para usar la carpeta temporal de Azure, donde SÍ tenemos permisos
+// 3. Configurar Multer
 const upload = multer({ dest: os.tmpdir() }); 
-
 
 const containerName = 'canciones';
 
-// 4. Configuración de Azure Blob Storage (Protegida)
+// 4. Configuración de Azure Blob Storage
 let blobServiceClient, sharedKeyCredential;
 
 try {
@@ -53,7 +50,7 @@ try {
 
 // Función para generar URL SAS
 function getSasUrl(blobName) {
-  if (!sharedKeyCredential) return null; // Si no hay credenciales, devuelve nulo
+  if (!sharedKeyCredential) return null; 
   const sasToken = generateBlobSASQueryParameters({
     containerName, blobName,
     permissions: BlobSASPermissions.parse("r"),
@@ -67,16 +64,12 @@ function getSasUrl(blobName) {
 // RUTAS DE LA API
 // ==========================================
 
-// Ruta ANTIGUA (la mantenemos por si la llamas por ahí)
 app.get('/api/song/:songName', async (req, res) => {
   res.json({ url: getSasUrl(req.params.songName) });
 });
 
-// Ruta NUEVA: Obtener TODAS las canciones de la BD
 app.get('/api/songs', async (req, res) => {
-    // Cambiar a _id: -1
-  const songs = await Song.find().sort({ _id: -1 });   // Ordenadas por las más nuevas
-  // A cada canción le generamos su URL segura para escucharla
+  const songs = await Song.find().sort({ _id: -1 });   
   const songsWithUrls = songs.map(song => ({
     id: song._id,
     name: song.originalName,
@@ -85,31 +78,25 @@ app.get('/api/songs', async (req, res) => {
   res.json(songsWithUrls);
 });
 
-// Ruta NUEVA: Subir una canción nueva
 app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
   if (!req.file) return res.status(400).send("No se subió ningún archivo");
 
   const file = req.file;
-  // Generamos un nombre único para evitar que se pisen (ej: 12345.mp3)
   const blobName = Date.now() + path.extname(file.originalname);
 
   try {
-    // 1. Subir a Azure Blob Storage
     const blockBlobClient = blobServiceClient.getContainerClient(containerName).getBlockBlobClient(blobName);
     await blockBlobClient.uploadFile(file.path);
 
-    // 2. Guardar en Cosmos DB
     const newSong = new Song({
       fileName: blobName,
-      originalName: file.originalname // El nombre bonito que ve el usuario
+      originalName: file.originalname
     });
     await newSong.save();
 
-    // 3. Eliminar el archivo temporal de la carpeta 'uploads/' del servidor
     const fs = require('fs');
     fs.unlinkSync(file.path);
 
-    // 4. Devolver la lista actualizada
     const songs = await Song.find().sort({ _id: -1 });  
     const songsWithUrls = songs.map(song => ({
       id: song._id,
@@ -124,25 +111,20 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
   }
 });
 
-// Ruta NUEVA: Borrar una canción
 app.delete('/api/songs/:id', async (req, res) => {
   try {
-    // 1. Buscar la canción en la base de datos para saber su nombre de archivo
     const song = await Song.findById(req.params.id);
     if (!song) return res.status(404).send("Canción no encontrada en la BD");
 
-    // 2. Borrar el archivo físico de Azure Blob Storage
     try {
       const blockBlobClient = blobServiceClient.getContainerClient(containerName).getBlockBlobClient(song.fileName);
-      await blockBlobClient.delete(); // Lo elimina del contenedor 'canciones'
+      await blockBlobClient.delete(); 
     } catch (blobError) {
       console.error("El archivo no existía en Blob Storage, pero continuamos:", blobError.message);
     }
 
-    // 3. Borrar el registro de la base de datos
     await Song.findByIdAndDelete(req.params.id);
 
-    // 4. Devolver la lista actualizada para que el Frontend se refresque sin recargar
     const songs = await Song.find().sort({ _id: -1 }); 
     const songsWithUrls = songs.map(s => ({
       id: s._id,
@@ -161,12 +143,10 @@ app.delete('/api/songs/:id', async (req, res) => {
 // RUTAS DE PLAYLISTS
 // ==========================================
 
-// Obtener todas las playlists (filtradas por el email del usuario)
 app.get('/api/playlists', async (req, res) => {
   const ownerEmail = req.query.owner;
   const playlists = await Playlist.find({ ownerEmail }).sort({ _id: -1 });
   
-  // A cada canción dentro de cada playlist, le generamos su URL segura
   const playlistsWithUrls = playlists.map(pl => ({
     id: pl._id,
     name: pl.name,
@@ -179,7 +159,6 @@ app.get('/api/playlists', async (req, res) => {
   res.json(playlistsWithUrls);
 });
 
-// Crear una playlist nueva
 app.post('/api/playlists', async (req, res) => {
   const { name, ownerEmail } = req.body;
   if (!name) return res.status(400).send("El nombre es obligatorio");
@@ -189,15 +168,13 @@ app.post('/api/playlists', async (req, res) => {
   res.status(201).json({ id: newPlaylist._id, name: newPlaylist.name, songs: [] });
 });
 
-// Añadir una canción a una playlist
 app.post('/api/playlists/:id/song', async (req, res) => {
   const { songId, originalName, fileName } = req.body;
   const playlist = await Playlist.findById(req.params.id);
   if (!playlist) return res.status(404).send("Playlist no encontrada");
 
-  // Evitamos añadir la misma canción dos veces
   if (playlist.songs.some(s => s.songId === songId)) {
-    return res.json(playlist); // Devolvemos la tal cual
+    return res.json(playlist); 
   }
 
   playlist.songs.push({ songId, originalName, fileName });
@@ -205,7 +182,6 @@ app.post('/api/playlists/:id/song', async (req, res) => {
   res.json(playlist);
 });
 
-// Quitar una canción de una playlist
 app.delete('/api/playlists/:id/song/:songId', async (req, res) => {
   const playlist = await Playlist.findById(req.params.id);
   if (!playlist) return res.status(404).send("Playlist no encontrada");
@@ -215,27 +191,49 @@ app.delete('/api/playlists/:id/song/:songId', async (req, res) => {
   res.json(playlist);
 });
 
-// Ruta NUEVA: Borrar una playlist entera
 app.delete('/api/playlists/:id', async (req, res) => {
   try {
     await Playlist.findByIdAndDelete(req.params.id);
-    res.status(204).send(); // 204 significa "Borrado con éxito sin devolver contenido"
+    res.status(204).send();
   } catch (error) {
     console.error(error);
     res.status(500).send("Error al borrar la playlist");
   }
 });
-const Favorite = mongoose.model('Favorite', new mongoose.Schema({
-  userId: String,       // El ID de Microsoft del usuario
-  songId: String,
-  originalName: String,
-  fileName: String
-}));
+
 // ==========================================
 // RUTAS DE FAVORITOS
 // ==========================================
 
-// Obtener TODOS los favoritos de un usuario
+// MODELO ACTUALIZADO: Ahora guarda también el nombre del usuario
+const Favorite = mongoose.model('Favorite', new mongoose.Schema({
+  userId: String,       
+  userName: String,     // NUEVO: Para saber de quién es el favorito en el feed público
+  songId: String,
+  originalName: String,
+  fileName: String
+}));
+
+// NUEVA RUTA: Feed Público (Explorar) - Obtiene los favoritos de TODOS
+app.get('/api/favorites/explore', async (req, res) => {
+  try {
+    // Obtenemos los últimos 50 favoritos subidos por cualquier persona
+    const favorites = await Favorite.find().sort({ _id: -1 }).limit(50);
+    
+    const favoritesWithUrls = favorites.map(f => ({
+      userId: f.userId,
+      userName: f.userName || 'Usuario Anónimo', // Por si hay registros antiguos sin nombre
+      songId: f.songId,
+      name: f.originalName,
+      url: getSasUrl(f.fileName)
+    }));
+    res.json(favoritesWithUrls);
+  } catch (error) {
+    res.status(500).send("Error al cargar el feed público");
+  }
+});
+
+// Obtener LOS favoritos DE UN usuario específico (el que está logueado)
 app.get('/api/favorites', async (req, res) => {
   const userId = req.query.userId;
   if (!userId) return res.status(400).send("Falta el ID de usuario");
@@ -249,16 +247,16 @@ app.get('/api/favorites', async (req, res) => {
   res.json(favoritesWithUrls);
 });
 
-// Añadir a favoritos
+// Añadir a favoritos (ACTUALIZADO: ahora recibe el userName del frontend)
 app.post('/api/favorites', async (req, res) => {
-  const { userId, songId, originalName, fileName } = req.body;
+  const { userId, userName, songId, originalName, fileName } = req.body;
   if (!userId || !songId) return res.status(400).send("Faltan datos");
 
   // Evitar duplicados
   const exists = await Favorite.findOne({ userId, songId });
   if (exists) return res.json({ message: "Ya es favorito" });
 
-  const newFav = new Favorite({ userId, songId, originalName, fileName });
+  const newFav = new Favorite({ userId, userName, songId, originalName, fileName }); // Guardamos el userName
   await newFav.save();
   res.status(201).json({ message: "Añadido a favoritos" });
 });
@@ -270,7 +268,7 @@ app.delete('/api/favorites/:songId', async (req, res) => {
   res.status(204).send();
 });
 
-// Comprobar si una canción ES favorita (para pintar el corazón rojo al cargar la página)
+// Comprobar si una canción ES favorita
 app.get('/api/favorites/check/:songId', async (req, res) => {
   const userId = req.query.userId;
   const isFavorite = await Favorite.exists({ userId, songId: req.params.songId });
